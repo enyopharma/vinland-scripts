@@ -1,0 +1,93 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use DBI;
+use Data::Dumper;
+
+my $drakkar = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
+    $ENV{'DB_USERNAME'},
+    $ENV{'DB_PASSWORD'},
+);
+
+my $vinland = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
+    $ENV{'DB_USERNAME'},
+    $ENV{'DB_PASSWORD'},
+);
+
+my $select_human_proteins_sth = $drakkar->prepare('
+    SELECT p.type, p.ncbi_taxon_id, p.accession, p.name, p.description, tn.name AS taxon
+    FROM
+        proteins AS p,
+        proteins_versions AS pv,
+        taxon AS t LEFT JOIN taxon_name AS tn ON t.taxon_id = tn.taxon_id AND tn.name_class = \'scientific name\'
+    WHERE p.type = \'h\'
+    AND p.accession = pv.accession
+    AND p.version = pv.version
+    AND p.ncbi_taxon_id = t.ncbi_taxon_id
+    ORDER BY accession ASC
+');
+
+my $select_viral_proteins_sth = $drakkar->prepare('
+    SELECT p.type, p.ncbi_taxon_id, p.accession, d.name2 AS name, p.description, tn.name AS taxon
+    FROM
+        associations AS a,
+        descriptions AS d,
+        proteins AS p,
+        proteins_versions AS pv,
+        taxon AS t LEFT JOIN taxon_name AS tn ON t.taxon_id = tn.taxon_id AND tn.name_class = \'scientific name\'
+    WHERE p.type=\'v\'
+    AND p.accession = pv.accession
+    AND p.version = pv.version
+    AND p.ncbi_taxon_id = t.ncbi_taxon_id
+    AND p.id = d.protein2_id
+    AND a.id = d.association_id
+    AND a.state = \'curated\'
+    AND d.deleted_at IS NULL
+    GROUP BY p.type, p.ncbi_taxon_id, p.accession, d.name2, p.description, tn.name
+    ORDER BY p.accession ASC
+');
+
+sub format_protein {
+    my @search = (
+        $_[0]->{'accession'},
+        $_[0]->{'name'},
+        $_[0]->{'description'},
+    );
+
+    push(@search, $_[0]->{'taxon'}) if ($_[0]->{'taxon'});
+
+    return [
+        $_[0]->{'type'},
+        $_[0]->{'ncbi_taxon_id'},
+        $_[0]->{'accession'},
+        $_[0]->{'name'},
+        $_[0]->{'description'},
+        join(' ', @search),
+    ];
+}
+
+my @proteins = ();
+
+$select_human_proteins_sth->execute;
+
+while (my $protein = $select_human_proteins_sth->fetchrow_hashref) {
+    push(@proteins, format_protein($protein));
+}
+
+$select_human_proteins_sth->finish;
+
+$select_viral_proteins_sth->execute;
+
+while (my $protein = $select_viral_proteins_sth->fetchrow_hashref) {
+    push(@proteins, format_protein($protein));
+}
+
+$select_viral_proteins_sth->finish;
+
+$vinland->do('COPY proteins(type, ncbi_taxon_id, accession, name, description, search) FROM STDIN');
+
+$vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@proteins);
+
+$vinland->pg_putcopyend();
