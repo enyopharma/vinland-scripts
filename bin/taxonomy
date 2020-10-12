@@ -1,0 +1,104 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use DBI;
+use Data::Dumper;
+
+my $ncbi_taxon_id = 10239;
+my $node_rank = 'species';
+my $name_class = 'scientific name';
+
+my $drakkar = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
+    $ENV{'DB_USERNAME'},
+    $ENV{'DB_PASSWORD'},
+);
+
+my $vinland = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
+    $ENV{'DB_USERNAME'},
+    $ENV{'DB_PASSWORD'},
+);
+
+my $select_boundaries_sth = $drakkar->prepare('
+    SELECT left_value, right_value FROM taxon WHERE ncbi_taxon_id = ?
+');
+
+my $select_species_sth = $drakkar->prepare('
+    SELECT DISTINCT ncbi_taxon_id AS ncbi_species_id, left_value, right_value
+    FROM taxon
+    WHERE node_rank = ?
+    AND left_value >= ?
+    AND right_value <= ?
+');
+
+my $select_taxa_sth = $drakkar->prepare('
+    SELECT taxon_id, parent_taxon_id, ncbi_taxon_id, left_value, right_value
+    FROM taxon
+    WHERE left_value >= ? AND right_value <= ?
+');
+
+my $select_taxon_name_sth = $drakkar->prepare('
+    SELECT name FROM taxon_name WHERE taxon_id = ? AND name_class = ?
+');
+
+my $select_ncbi_taxon_ids_sth = $drakkar->prepare('
+    SELECT ncbi_taxon_id FROM taxon WHERE left_value >= ? AND right_value <= ?
+');
+
+my $select_nb_interactions_sth = $vinland->prepare('
+    SELECT COUNT(DISTINCT e.interaction_id)
+    FROM proteins AS p, edges AS e
+    WHERE p.id = e.source_id AND p.ncbi_taxon_id = ANY(?::int[])
+');
+
+my @entries = ();
+
+$select_boundaries_sth->execute($ncbi_taxon_id);
+my $virus = $select_boundaries_sth->fetchrow_hashref;
+$select_boundaries_sth->finish;
+
+die('wrong virus taxon id') if (!$virus);
+
+$select_species_sth->execute($node_rank, $virus->{'left_value'}, $virus->{'right_value'});
+
+while (my $species = $select_species_sth->fetchrow_hashref) {
+    $select_taxa_sth->execute($species->{'left_value'}, $species->{'right_value'});
+
+    while (my $taxon = $select_taxa_sth->fetchrow_hashref) {
+        $select_ncbi_taxon_ids_sth->execute($taxon->{'left_value'}, $taxon->{'right_value'});
+        my $ncbi_taxon_ids = $select_ncbi_taxon_ids_sth->fetchall_arrayref({});
+        $select_ncbi_taxon_ids_sth->finish;
+
+        $select_nb_interactions_sth->execute('{' . join(',', map { $_->{'ncbi_taxon_id'} } @{$ncbi_taxon_ids}) . '}');
+        my($nb_interactions) = $select_nb_interactions_sth->fetchrow_array;
+        $select_nb_interactions_sth->finish;
+
+        $select_taxon_name_sth->execute($taxon->{'taxon_id'}, $name_class);
+        my $tname = $select_taxon_name_sth->fetchrow_hashref;
+        $select_taxon_name_sth->finish;
+
+        my $name = $tname ? $tname->{'name'} : 'obsolete taxon';
+
+        push(@entries, [
+            $taxon->{'taxon_id'},
+            $taxon->{'parent_taxon_id'},
+            $taxon->{'ncbi_taxon_id'},
+            $species->{'ncbi_species_id'},
+            $taxon->{'name'},
+            $taxon->{'left_value'},
+            $taxon->{'right_value'},
+            $nb_interactions,
+        ]);
+    }
+
+    $select_taxa_sth->finish;
+}
+
+$select_species_sth->finish;
+
+$vinland->do('COPY taxonomy (taxon_id, parent_taxon_id, ncbi_taxon_id, ncbi_species_id, name, left_value, right_value, nb_interactions) FROM STDIN');
+
+$vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@entries);
+
+$vinland->pg_putcopyend();
