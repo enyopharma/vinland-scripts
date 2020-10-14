@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 12.4 (Ubuntu 12.4-0ubuntu0.20.04.1)
--- Dumped by pg_dump version 12.4 (Ubuntu 12.4-0ubuntu0.20.04.1)
+-- Dumped from database version 10.14 (Ubuntu 10.14-0ubuntu0.18.04.1)
+-- Dumped by pg_dump version 10.14 (Ubuntu 10.14-0ubuntu0.18.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -15,6 +15,20 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
 
 --
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
@@ -32,7 +46,7 @@ COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching
 
 SET default_tablespace = '';
 
-SET default_table_access_method = heap;
+SET default_with_oids = false;
 
 --
 -- Name: annotations; Type: TABLE; Schema: public; Owner: -
@@ -481,6 +495,14 @@ ALTER TABLE ONLY public.sequences
 
 
 --
+-- Name: sequences sequences_protein_id_accession_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sequences
+    ADD CONSTRAINT sequences_protein_id_accession_key UNIQUE (protein_id, accession);
+
+
+--
 -- Name: taxonomy taxonomy_left_value_right_value_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -591,4 +613,3 @@ CREATE INDEX taxonomy_parent_taxon_id_key ON public.taxonomy USING btree (parent
 --
 -- PostgreSQL database dump complete
 --
-

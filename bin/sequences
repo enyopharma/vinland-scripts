@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use DBI;
 use JSON qw(from_json);
+use Sort::Key::Natural qw(natsort);
 use Data::Dumper;
 
 my $drakkar = DBI->connect(
@@ -57,12 +58,12 @@ while (my $protein = $select_human_proteins_sth->fetchrow_hashref) {
     my($protein_id) = $select_protein_sth->fetchrow_array;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) if (! $protein_id);
+    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) if (!$protein_id);
 
     my $pacc = $protein->{'accession'};
     my $sequences = from_json($protein->{'sequences'});
 
-    foreach my $iacc (keys %{$sequences}) {
+    foreach my $iacc (natsort keys %{$sequences}) {
         push(@sequences, [
             $protein_id,
             $iacc,
@@ -84,7 +85,7 @@ while (my $protein = $select_viral_proteins_sth->fetchrow_hashref) {
     my($protein_id) = $select_protein_sth->fetchrow_array;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) if (! $protein_id);
+    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) if (!$protein_id);
 
     my $pacc = $protein->{'accession'};
     my $sequences = from_json($protein->{'sequences'});
@@ -107,7 +108,7 @@ while (my $protein = $select_viral_proteins_sth->fetchrow_hashref) {
 
     next if $is_mature;
 
-    foreach my $iacc (keys %{$sequences}) {
+    foreach my $iacc (natsort keys %{$sequences}) {
         next if ($pacc eq $iacc);
 
         push(@sequences, [
