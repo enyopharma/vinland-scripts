@@ -1,0 +1,30 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Sort::Key::Natural qw(natsort);
+use Data::Dumper;
+
+my $headers1 = <>;
+my $headers2 = <>;
+
+my %map = ();
+
+while (my $line = <>) {
+    $line =~ s/[\r\n]*$//;
+
+    my @parts = split("\t", $line);
+
+    my $accession = $parts[1];
+    my $name = $parts[3];
+    my $ref = $parts[4];
+
+    unless ($map{$ref}) {
+        $map{$ref}->{'name'} = $name;
+    }
+
+    push(@{$map{$ref}->{'accessions'}}, $accession);
+}
+
+foreach my $ref (natsort keys %map) {
+    print join("\t", $ref, $map{$ref}->{'name'}, @{$map{$ref}->{'accessions'}}) . "\n";
+}
