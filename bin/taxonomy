@@ -75,17 +75,15 @@ while (my $species = $select_species_sth->fetchrow_hashref) {
         $select_nb_interactions_sth->finish;
 
         $select_taxon_name_sth->execute($taxon->{'taxon_id'}, $name_class);
-        my $tname = $select_taxon_name_sth->fetchrow_hashref;
+        my $name = $select_taxon_name_sth->fetchrow_hashref;
         $select_taxon_name_sth->finish;
-
-        my $name = $tname ? $tname->{'name'} : 'obsolete taxon';
 
         push(@entries, [
             $taxon->{'taxon_id'},
             $taxon->{'parent_taxon_id'},
             $taxon->{'ncbi_taxon_id'},
             $species->{'ncbi_species_id'},
-            $taxon->{'name'},
+            $name ? $name->{'name'} : 'obsolete taxon',
             $taxon->{'left_value'},
             $taxon->{'right_value'},
             $nb_interactions,
