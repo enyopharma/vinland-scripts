@@ -1,0 +1,11 @@
+#!/bin/bash
+carton exec ./bin/proteins
+carton exec ./bin/proteins_xrefs
+carton exec ./bin/sequences
+carton exec ./bin/interactions
+carton exec ./bin/edges
+carton exec ./bin/methods
+carton exec ./bin/publications
+carton exec ./bin/descriptions
+carton exec ./bin/mappings
+carton exec ./bin/taxonomy
