@@ -50,13 +50,13 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     my $protein1 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) if (! $protein1);
+    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) if (!$protein1);
 
     $select_protein_sth->execute($description->{'accession2'}, $description->{'name2'});
     my $protein2 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) if (! $protein2);
+    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) if (!$protein2);
 
     my @sorted = sort {
         return +1 if ($a->{'type'} eq 'v');

@@ -98,7 +98,7 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     my $interaction = $select_interaction_sth->fetchrow_hashref;
     $select_interaction_sth->finish;
 
-    die(sprintf('interaction not found %s - %s', $sorted[0]->{'id'}, $sorted[1]->{'id'})) if (! $interaction);
+    die(sprintf('interaction not found %s - %s', $sorted[0]->{'id'}, $sorted[1]->{'id'})) if (!$interaction);
 
     push(@descriptions, [
         $description->{'pmid'},
