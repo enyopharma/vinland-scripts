@@ -141,7 +141,7 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
 
 $select_descriptions_sth->finish;
 
-$vinland->do('COPY mappings(edge_id, sequence_id, description_id, start, stop, identity, sequence) FROM STDIN');
+$vinland->do('COPY mappings (edge_id, sequence_id, description_id, start, stop, identity, sequence) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@alignments);
 

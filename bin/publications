@@ -58,7 +58,7 @@ while (my $publication = $select_publications_sth->fetchrow_hashref) {
 
 $select_publications_sth->finish;
 
-$vinland->do('COPY publications(pmid, title, year) FROM STDIN');
+$vinland->do('COPY publications (pmid, title, year) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@publications);
 

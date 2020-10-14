@@ -125,7 +125,7 @@ while (my $protein = $select_viral_proteins_sth->fetchrow_hashref) {
 
 $select_viral_proteins_sth->finish;
 
-$vinland->do('COPY sequences(protein_id, accession, is_canonical, is_mature, sequence, start, stop) FROM STDIN');
+$vinland->do('COPY sequences (protein_id, accession, is_canonical, is_mature, sequence, start, stop) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@sequences);
 

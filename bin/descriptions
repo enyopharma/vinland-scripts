@@ -109,7 +109,7 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
 
 $select_descriptions_sth->finish;
 
-$vinland->do('COPY descriptions(pmid, method_id, interaction_id) FROM STDIN');
+$vinland->do('COPY descriptions (pmid, method_id, interaction_id) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@descriptions);
 

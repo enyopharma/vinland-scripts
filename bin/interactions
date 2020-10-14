@@ -86,7 +86,7 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
 
 $select_descriptions_sth->finish;
 
-$vinland->do('COPY interactions(type, protein1_id, protein2_id, nb_publications, nb_methods) FROM STDIN');
+$vinland->do('COPY interactions (type, protein1_id, protein2_id, nb_publications, nb_methods) FROM STDIN');
 
 foreach my $accession1 (sort { $a cmp $b } keys %interactions) {
     foreach my $name1 (sort { $a cmp $b } keys %{$interactions{$accession1}}) {

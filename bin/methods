@@ -24,7 +24,7 @@ $select_methods_sth->execute;
 
 my $methods = $select_methods_sth->fetchall_arrayref;
 
-$vinland->do('COPY methods(psimi_id, name) FROM STDIN');
+$vinland->do('COPY methods (psimi_id, name) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@{$methods});
 

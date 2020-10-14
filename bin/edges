@@ -36,7 +36,7 @@ while (my $interaction = $select_interactions_sth->fetchrow_hashref) {
 
 $select_interactions_sth->finish;
 
-$vinland->do('COPY edges(interaction_id, source_id, target_id) FROM STDIN');
+$vinland->do('COPY edges (interaction_id, source_id, target_id) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@edges);
 
