@@ -6,45 +6,30 @@ use JSON qw(from_json);
 use Data::Dumper;
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $select_descriptions_sth = $drakkar->prepare('
-    SELECT
-        a.pmid,
-        m.psimi_id,
-        p1.accession AS accession1, d.name1, d.mapping1,
-        p2.accession AS accession2, d.name2, d.mapping2
-    FROM
-        methods AS m,
-        associations AS a,
-        descriptions AS d,
-        proteins AS p1,
-        proteins AS p2,
-        proteins_versions AS pv1,
-        proteins_versions AS pv2
-    WHERE a.id = d.association_id
-      AND m.id = d.method_id
-      AND p1.id = d.protein1_id
-      AND p1.accession = pv1.accession
-      AND p1.version = pv1.version
-      AND p2.id = d.protein2_id
-      AND p2.accession = pv2.accession
-      AND p2.version = pv2.version
-      AND a.state = \'curated\'
-      AND d.deleted_at IS NULL
-    ORDER BY p1.accession ASC, p2.accession ASC
+    SELECT stable_id, pmid, psimi_id, accession1, name1, mapping1, accession2, name2, mapping2
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+    ORDER BY accession1 ASC, accession2 ASC
 ');
 
-my $select_protein_sth = $vinland->prepare('
+my $select_protein_sth = $
+vinland->prepare('
     SELECT * FROM proteins WHERE accession = ? AND name = ?
 ');
 
@@ -64,7 +49,6 @@ my $select_description_sth = $vinland->prepare('
       AND m.psimi_id = ?
       AND i.protein1_id = ?
       AND i.protein2_id = ?
-    ORDER BY i.protein1_id ASC, i.protein2_id ASC
 ');
 
 my @alignments = ();
@@ -72,17 +56,24 @@ my @alignments = ();
 $select_descriptions_sth->execute;
 
 while (my $description = $select_descriptions_sth->fetchrow_hashref) {
+    my @entries = ();
+
+    my $mapping1 = from_json($description->{'mapping1'});
+    my $mapping2 = from_json($description->{'mapping2'});
+
+    next if @{$mapping1} == 0 && @{$mapping2} == 0;
+
     $select_protein_sth->execute($description->{'accession1'}, $description->{'name1'});
     my $protein1 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) if (!$protein1);
+    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) unless $protein1;
 
     $select_protein_sth->execute($description->{'accession2'}, $description->{'name2'});
     my $protein2 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) if (!$protein2);
+    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) unless $protein2;
 
     my @sorted = sort {
         return +1 if ($a->{'type'} eq 'v');
@@ -91,48 +82,39 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     } ($protein1, $protein2);
 
     $select_description_sth->execute($description->{'pmid'}, $description->{'psimi_id'}, $sorted[0]->{'id'}, $sorted[1]->{'id'});
-    my($description_id) = $select_description_sth->fetchrow_array;
+    my ($description_id) = $select_description_sth->fetchrow_array;
     $select_description_sth->finish;
 
-    die('description not found') if (!$description);
+    die('description not found') unless $description;
 
-    my @entries = ({
-        'mapping' => from_json($description->{'mapping1'}),
-        'source_id' => $protein1->{'id'},
-        'target_id' => $protein2->{'id'},
-    }, {
-        'mapping' => from_json($description->{'mapping2'}),
-        'source_id' => $protein2->{'id'},
-        'target_id' => $protein1->{'id'},
-    });
+    push(@entries, {'mapping' => $mapping1, 'source_id' => $protein1->{'id'}, 'target_id' => $protein2->{'id'}}) if (@{$mapping1} > 0);
+    push(@entries, {'mapping' => $mapping2, 'source_id' => $protein2->{'id'}, 'target_id' => $protein1->{'id'}}) if (@{$mapping2} > 0);
 
     foreach my $entry (@entries) {
-        if (@{$entry->{'mapping'}} > 0) {
-            $select_edge_sth->execute($entry->{'source_id'}, $entry->{'target_id'});
-            my $edge = $select_edge_sth->fetchrow_hashref;
-            $select_edge_sth->finish;
+        $select_edge_sth->execute($entry->{'source_id'}, $entry->{'target_id'});
+        my $edge = $select_edge_sth->fetchrow_hashref;
+        $select_edge_sth->finish;
 
-            die(sprintf('edge not found %s - %s', $entry->{'source_id'}, $entry->{'target_id'})) if (!$edge);
+        die(sprintf('edge not found %s - %s', $entry->{'source_id'}, $entry->{'target_id'})) unless $edge;
 
-            foreach my $mapping (@{$entry->{'mapping'}}) {
-                foreach my $isoform (@{$mapping->{'isoforms'}}) {
-                    $select_sequence_sth->execute($entry->{'source_id'}, $isoform->{'accession'});
-                    my $sequence = $select_sequence_sth->fetchrow_hashref;
-                    $select_sequence_sth->finish;
+        foreach my $mapping (@{$entry->{'mapping'}}) {
+            foreach my $isoform (@{$mapping->{'isoforms'}}) {
+                $select_sequence_sth->execute($entry->{'source_id'}, $isoform->{'accession'});
+                my $sequence = $select_sequence_sth->fetchrow_hashref;
+                $select_sequence_sth->finish;
 
-                    die('sequence not found') if (!$sequence);
+                die(sprintf('sequence not found %s - %s', $entry->{'source_id'}, $isoform->{'accession'})) unless $sequence;
 
-                    foreach my $occurrence (@{$isoform->{'occurrences'}}) {
-                        push(@alignments, [
-                            $edge->{'id'},
-                            $sequence->{'id'},
-                            $description_id,
-                            $occurrence->{'start'},
-                            $occurrence->{'stop'},
-                            $occurrence->{'identity'},
-                            $mapping->{'sequence'},
-                        ]);
-                    }
+                foreach my $occurrence (@{$isoform->{'occurrences'}}) {
+                    push(@alignments, [
+                        $edge->{'id'},
+                        $sequence->{'id'},
+                        $description_id,
+                        $occurrence->{'start'},
+                        $occurrence->{'stop'},
+                        $occurrence->{'identity'},
+                        $mapping->{'sequence'},
+                    ]);
                 }
             }
         }

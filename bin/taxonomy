@@ -9,15 +9,15 @@ my $node_rank = 'species';
 my $name_class = 'scientific name';
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $select_boundaries_sth = $drakkar->prepare('

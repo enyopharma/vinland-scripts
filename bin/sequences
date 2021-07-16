@@ -7,42 +7,39 @@ use Sort::Key::Natural qw(natsort);
 use Data::Dumper;
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $select_human_proteins_sth = $drakkar->prepare('
-    SELECT p.accession, p.name, p.sequences
+    SELECT p.id, p.accession, p.name, p.sequences
     FROM proteins AS p, proteins_versions AS pv
     WHERE p.type = \'h\'
     AND p.accession = pv.accession
     AND p.version = pv.version
-    ORDER BY accession ASC
+    ORDER BY p.accession ASC
 ');
 
 my $select_viral_proteins_sth = $drakkar->prepare('
-    SELECT p.accession, d.name2 AS name, d.start2 AS start, d.stop2 AS stop, p.sequences
-    FROM
-        associations AS a,
-        descriptions AS d,
-        proteins AS p,
-        proteins_versions AS pv
-    WHERE p.type=\'v\'
-    AND p.accession = pv.accession
-    AND p.version = pv.version
-    AND p.id = d.protein2_id
-    AND a.id = d.association_id
-    AND a.state = \'curated\'
-    AND d.deleted_at IS NULL
-    GROUP BY p.accession, d.name2, d.start2, d.stop2, p.sequences
-    ORDER BY p.accession ASC
+    SELECT DISTINCT protein2_id AS id, accession2 AS accession, name2 AS name, start2 AS start, stop2 AS stop
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+    ORDER BY accession2 ASC
+');
+
+my $select_sequences_sth = $drakkar->prepare('
+    SELECT sequences FROM proteins WHERE id = ?
 ');
 
 my $select_protein_sth = $vinland->prepare('
@@ -55,23 +52,22 @@ $select_human_proteins_sth->execute;
 
 while (my $protein = $select_human_proteins_sth->fetchrow_hashref) {
     $select_protein_sth->execute($protein->{'accession'}, $protein->{'name'});
-    my($protein_id) = $select_protein_sth->fetchrow_array;
+    my ($protein_id) = $select_protein_sth->fetchrow_array;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) if (!$protein_id);
+    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) unless $protein_id;
 
-    my $pacc = $protein->{'accession'};
     my $sequences = from_json($protein->{'sequences'});
 
-    foreach my $iacc (natsort keys %{$sequences}) {
+    foreach my $accession (natsort keys %{$sequences}) {
         push(@sequences, [
             $protein_id,
-            $iacc,
-            $pacc eq $iacc ? 1 : 0,
+            $accession,
+            $protein->{'accession'} eq $accession ? 1 : 0,
             0,
-            $sequences->{$iacc},
+            $sequences->{$accession},
             1,
-            length($sequences->{$iacc}),
+            length($sequences->{$accession}),
         ]);
     }
 }
@@ -82,13 +78,17 @@ $select_viral_proteins_sth->execute;
 
 while (my $protein = $select_viral_proteins_sth->fetchrow_hashref) {
     $select_protein_sth->execute($protein->{'accession'}, $protein->{'name'});
-    my($protein_id) = $select_protein_sth->fetchrow_array;
+    my ($protein_id) = $select_protein_sth->fetchrow_array;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) if (!$protein_id);
+    die(sprintf('protein not found %s - %s', $protein->{'accession'}, $protein->{'name'})) unless $protein_id;
+
+    $select_sequences_sth->execute($protein->{'id'});
+    my ($sequences_str) = $select_sequences_sth->fetchrow_array;
+    $select_sequences_sth->finish;
 
     my $pacc = $protein->{'accession'};
-    my $sequences = from_json($protein->{'sequences'});
+    my $sequences = from_json($sequences_str);
 
     my $canonical = $sequences->{$pacc};
 

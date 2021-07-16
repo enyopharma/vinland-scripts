@@ -5,75 +5,50 @@ use DBI;
 use Data::Dumper;
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $select_human_proteins_sth = $drakkar->prepare('
-    SELECT p.type, p.ncbi_taxon_id, p.accession, p.name, p.description, tn.name AS taxon
-    FROM
-        proteins AS p,
-        proteins_versions AS pv,
-        taxon AS t LEFT JOIN taxon_name AS tn ON t.taxon_id = tn.taxon_id AND tn.name_class = \'scientific name\'
+    SELECT p.ncbi_taxon_id, p.accession, p.name, p.description
+    FROM proteins AS p, proteins_versions AS pv
     WHERE p.type = \'h\'
     AND p.accession = pv.accession
     AND p.version = pv.version
-    AND p.ncbi_taxon_id = t.ncbi_taxon_id
-    ORDER BY accession ASC
-');
-
-my $select_viral_proteins_sth = $drakkar->prepare('
-    SELECT p.type, p.ncbi_taxon_id, p.accession, d.name2 AS name, p.description, tn.name AS taxon
-    FROM
-        associations AS a,
-        descriptions AS d,
-        proteins AS p,
-        proteins_versions AS pv,
-        taxon AS t LEFT JOIN taxon_name AS tn ON t.taxon_id = tn.taxon_id AND tn.name_class = \'scientific name\'
-    WHERE p.type=\'v\'
-    AND p.accession = pv.accession
-    AND p.version = pv.version
-    AND p.ncbi_taxon_id = t.ncbi_taxon_id
-    AND p.id = d.protein2_id
-    AND a.id = d.association_id
-    AND a.state = \'curated\'
-    AND d.deleted_at IS NULL
-    GROUP BY p.type, p.ncbi_taxon_id, p.accession, d.name2, p.description, tn.name
     ORDER BY p.accession ASC
 ');
 
-sub format_protein {
-    my @search = (
-        $_[0]->{'accession'},
-        $_[0]->{'name'},
-        $_[0]->{'description'},
-    );
-
-    push(@search, $_[0]->{'taxon'}) if ($_[0]->{'taxon'});
-
-    return [
-        $_[0]->{'type'},
-        $_[0]->{'ncbi_taxon_id'},
-        $_[0]->{'accession'},
-        $_[0]->{'name'},
-        $_[0]->{'description'},
-        join(' ', @search),
-    ];
-}
+my $select_viral_proteins_sth = $drakkar->prepare('
+    SELECT DISTINCT ncbi_taxon_id2 AS ncbi_taxon_id, accession2 AS accession, name2 AS name, description2 AS description, taxon2 AS taxon
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+    ORDER BY accession2 ASC
+');
 
 my @proteins = ();
 
 $select_human_proteins_sth->execute;
 
 while (my $protein = $select_human_proteins_sth->fetchrow_hashref) {
-    push(@proteins, format_protein($protein));
+    push(@proteins, [
+        'h',
+        $protein->{'ncbi_taxon_id'},
+        $protein->{'accession'},
+        $protein->{'name'},
+        $protein->{'description'},
+        join(' ', $protein->{'accession'}, $protein->{'name'}, $protein->{'description'}),
+    ]);
 }
 
 $select_human_proteins_sth->finish;
@@ -81,7 +56,14 @@ $select_human_proteins_sth->finish;
 $select_viral_proteins_sth->execute;
 
 while (my $protein = $select_viral_proteins_sth->fetchrow_hashref) {
-    push(@proteins, format_protein($protein));
+    push(@proteins, [
+        'v',
+        $protein->{'ncbi_taxon_id'},
+        $protein->{'accession'},
+        $protein->{'name'},
+        $protein->{'description'},
+        join(' ', $protein->{'accession'}, $protein->{'name'}, $protein->{'description'}, $protein->{'taxon'}),
+    ]);
 }
 
 $select_viral_proteins_sth->finish;

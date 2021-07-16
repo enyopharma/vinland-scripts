@@ -6,33 +6,40 @@ use JSON qw(from_json);
 use Data::Dumper;
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $select_publications_sth = $drakkar->prepare('
-    SELECT p.pmid, p.metadata
-    FROM associations AS a, descriptions AS d, publications AS p
-    WHERE a.id = d.association_id
-    AND a.pmid = p.pmid
-    AND a.state = \'curated\'
-    AND d.deleted_at IS NULL
-    GROUP BY p.pmid
+    SELECT DISTINCT pmid
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+');
+
+my $select_publication_sth = $drakkar->prepare('
+    SELECT metadata FROM publications WHERE pmid = ?
 ');
 
 my @publications = ();
 
 $select_publications_sth->execute;
 
-while (my $publication = $select_publications_sth->fetchrow_hashref) {
-    my $pmid = $publication->{'pmid'};
+while (my ($pmid) = $select_publications_sth->fetchrow_array) {
+    $select_publication_sth->execute($pmid);
+    my $publication = $select_publication_sth->fetchrow_hashref;
+    $select_publication_sth->finish;
+
     my $metadata = from_json($publication->{'metadata'});
 
     if ($metadata->{'PubmedArticle'}) {

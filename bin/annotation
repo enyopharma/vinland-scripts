@@ -6,10 +6,10 @@ use Data::Dumper;
 
 my $source = shift @ARGV or die('no source');
 
-my $cnx = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+my $vinland = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my @annotations = ();
@@ -31,8 +31,8 @@ while (my $line = <>) {
     ]);
 }
 
-$cnx->do('COPY annotations (source, ref, name, search, accessions) FROM STDIN');
+$vinland->do('COPY annotations (source, ref, name, search, accessions) FROM STDIN');
 
-$cnx->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@annotations);
+$vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@annotations);
 
-$cnx->pg_putcopyend();
+$vinland->pg_putcopyend();

@@ -3,38 +3,30 @@ use strict;
 use warnings;
 use DBI;
 use List::Util qw(uniq);
+use Sort::Key::Natural qw(natsort);
 use Data::Dumper;
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $select_descriptions_sth = $drakkar->prepare('
-    SELECT
-        a.pmid, d.method_id, p1.accession AS accession1, d.name1, p2.accession AS accession2, d.name2
-    FROM
-        associations AS a,
-        descriptions AS d,
-        proteins AS p1,
-        proteins AS p2,
-        proteins_versions AS pv1,
-        proteins_versions AS pv2
-    WHERE a.id = d.association_id
-      AND p1.id = d.protein1_id
-      AND p2.id = d.protein2_id
-      AND p1.accession = pv1.accession AND p1.version = pv1.version
-      AND p2.accession = pv2.accession AND p2.version = pv2.version
-      AND a.state = \'curated\'
-      AND d.deleted_at IS NULL
-    ORDER BY p1.accession ASC, p2.accession ASC
+    SELECT pmid, psimi_id, accession1, name1, accession2, name2
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+    ORDER BY accession1 ASC, accession2 ASC
 ');
 
 my $select_protein_sth = $vinland->prepare('
@@ -50,13 +42,13 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     my $protein1 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) if (!$protein1);
+    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) unless $protein1;
 
     $select_protein_sth->execute($description->{'accession2'}, $description->{'name2'});
     my $protein2 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) if (!$protein2);
+    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) unless $protein2;
 
     my @sorted = sort {
         return +1 if ($a->{'type'} eq 'v');
@@ -70,17 +62,17 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     my $name2 = $sorted[1]->{'name'};
     my $accession2 = $sorted[1]->{'accession'};
 
-    if (!$interactions{$accession1}->{$name1}->{$accession2}->{$name2}) {
+    if ($interactions{$accession1}->{$name1}->{$accession2}->{$name2}) {
+        push(@{$interactions{$accession1}->{$name1}->{$accession2}->{$name2}->{'publications'}}, $description->{'pmid'});
+        push(@{$interactions{$accession1}->{$name1}->{$accession2}->{$name2}->{'methods'}}, $description->{'psimi_id'});
+    } else {
         $interactions{$accession1}->{$name1}->{$accession2}->{$name2} = {
             'type' => $sorted[1]->{'type'} eq 'h' ? 'hh' : 'vh',
             'protein1_id' => $sorted[0]->{'id'},
             'protein2_id' => $sorted[1]->{'id'},
             'publications' => [$description->{'pmid'}],
-            'methods' => [$description->{'method_id'}],
+            'methods' => [$description->{'psimi_id'}],
         };
-    } else {
-        push(@{$interactions{$accession1}->{$name1}->{$accession2}->{$name2}->{'publications'}}, $description->{'pmid'});
-        push(@{$interactions{$accession1}->{$name1}->{$accession2}->{$name2}->{'methods'}}, $description->{'method_id'});
     }
 }
 
@@ -88,10 +80,10 @@ $select_descriptions_sth->finish;
 
 $vinland->do('COPY interactions (type, protein1_id, protein2_id, nb_publications, nb_methods) FROM STDIN');
 
-foreach my $accession1 (sort { $a cmp $b } keys %interactions) {
-    foreach my $name1 (sort { $a cmp $b } keys %{$interactions{$accession1}}) {
-        foreach my $accession2 (sort { $a cmp $b } keys %{$interactions{$accession1}->{$name1}}) {
-            foreach my $name2 (sort { $a cmp $b } keys %{$interactions{$accession1}->{$name1}->{$accession2}}) {
+foreach my $accession1 (natsort keys %interactions) {
+    foreach my $name1 (natsort keys %{$interactions{$accession1}}) {
+        foreach my $accession2 (natsort keys %{$interactions{$accession1}->{$name1}}) {
+            foreach my $name2 (natsort keys %{$interactions{$accession1}->{$name1}->{$accession2}}) {
                 $vinland->pg_putcopydata(join("\t", (
                     $interactions{$accession1}->{$name1}->{$accession2}->{$name2}->{'type'},
                     $interactions{$accession1}->{$name1}->{$accession2}->{$name2}->{'protein1_id'},

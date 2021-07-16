@@ -5,42 +5,26 @@ use DBI;
 use Data::Dumper;
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_HOSTNAME'}),
-    $ENV{'DB_USERNAME'},
-    $ENV{'DB_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $select_descriptions_sth = $drakkar->prepare('
-    SELECT
-        a.pmid,
-        m.psimi_id,
-        p1.accession AS accession1, d.name1,
-        p2.accession AS accession2, d.name2
-    FROM
-        methods AS m,
-        associations AS a,
-        descriptions AS d,
-        proteins AS p1,
-        proteins AS p2,
-        proteins_versions AS pv1,
-        proteins_versions AS pv2
-    WHERE a.id = d.association_id
-      AND m.id = d.method_id
-      AND p1.id = d.protein1_id
-      AND p1.accession = pv1.accession
-      AND p1.version = pv1.version
-      AND p2.id = d.protein2_id
-      AND p2.accession = pv2.accession
-      AND p2.version = pv2.version
-      AND a.state = \'curated\'
-      AND d.deleted_at IS NULL
-    ORDER BY p1.accession ASC, p2.accession ASC
+    SELECT pmid, psimi_id, accession1, name1, accession2, name2
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+    ORDER BY accession1 ASC, accession2 ASC
 ');
 
 my $select_method_sth = $vinland->prepare('
@@ -68,25 +52,25 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     my $method = $select_method_sth->fetchrow_hashref;
     $select_method_sth->finish;
 
-    die('method not found') if (!$method);
+    die('method not found') unless $method;
 
     $select_publication_sth->execute($description->{'pmid'});
     my $publication = $select_publication_sth->fetchrow_hashref;
     $select_publication_sth->finish;
 
-    die('publication not found') if (!$publication);
+    die('publication not found') unless $publication;
 
     $select_protein_sth->execute($description->{'accession1'}, $description->{'name1'});
     my $protein1 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) if (!$protein1);
+    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) unless $protein1;
 
     $select_protein_sth->execute($description->{'accession2'}, $description->{'name2'});
     my $protein2 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) if (!$protein2);
+    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) unless $protein2;
 
     my @sorted = sort {
         return +1 if ($a->{'type'} eq 'v');
@@ -98,7 +82,7 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     my $interaction = $select_interaction_sth->fetchrow_hashref;
     $select_interaction_sth->finish;
 
-    die(sprintf('interaction not found %s - %s', $sorted[0]->{'id'}, $sorted[1]->{'id'})) if (!$interaction);
+    die(sprintf('interaction not found %s - %s', $sorted[0]->{'id'}, $sorted[1]->{'id'})) unless $interaction;
 
     push(@descriptions, [
         $description->{'pmid'},
