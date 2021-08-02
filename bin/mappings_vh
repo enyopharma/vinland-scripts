@@ -18,7 +18,7 @@ my $vinland = DBI->connect(
 );
 
 my $select_descriptions_sth = $drakkar->prepare('
-    SELECT stable_id, pmid, psimi_id, accession1, name1, mapping1, accession2, name2, mapping2
+    SELECT stable_id, type, pmid, psimi_id, accession1, name1, mapping1, accession2, name2, mapping2
     FROM dataset
     WHERE type = \'vh\'
     AND state = \'curated\'
@@ -28,8 +28,7 @@ my $select_descriptions_sth = $drakkar->prepare('
     ORDER BY accession1 ASC, accession2 ASC
 ');
 
-my $select_protein_sth = $
-vinland->prepare('
+my $select_protein_sth = $vinland->prepare('
     SELECT * FROM proteins WHERE accession = ? AND name = ?
 ');
 
@@ -55,61 +54,72 @@ my @alignments = ();
 
 $select_descriptions_sth->execute;
 
-while (my $description = $select_descriptions_sth->fetchrow_hashref) {
-    my @entries = ();
-
-    my $mapping1 = from_json($description->{'mapping1'});
-    my $mapping2 = from_json($description->{'mapping2'});
+while (my $vh = $select_descriptions_sth->fetchrow_hashref) {
+    my $mapping1 = from_json($vh->{'mapping1'});
+    my $mapping2 = from_json($vh->{'mapping2'});
 
     next if @{$mapping1} == 0 && @{$mapping2} == 0;
 
-    $select_protein_sth->execute($description->{'accession1'}, $description->{'name1'});
+    $select_protein_sth->execute($vh->{'accession1'}, $vh->{'name1'});
     my $protein1 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession1'}, $description->{'name1'})) unless $protein1;
+    die(sprintf('protein not found %s - %s', $vh->{'accession1'}, $vh->{'name1'})) unless $protein1;
 
-    $select_protein_sth->execute($description->{'accession2'}, $description->{'name2'});
+    $select_protein_sth->execute($vh->{'accession2'}, $vh->{'name2'});
     my $protein2 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
 
-    die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) unless $protein2;
+    die(sprintf('protein not found %s - %s', $vh->{'accession2'}, $vh->{'name2'})) unless $protein2;
 
-    my @sorted = sort {
-        return +1 if ($a->{'type'} eq 'v');
-        return -1 if ($b->{'type'} eq 'v');
-        return $a->{'accession'} cmp $b->{'accession'};
-    } ($protein1, $protein2);
-
-    $select_description_sth->execute($description->{'pmid'}, $description->{'psimi_id'}, $sorted[0]->{'id'}, $sorted[1]->{'id'});
-    my ($description_id) = $select_description_sth->fetchrow_array;
+    $select_description_sth->execute($vh->{'pmid'}, $vh->{'psimi_id'}, $protein1->{'id'}, $protein2->{'id'});
+    my $description = $select_description_sth->fetchrow_hashref;
     $select_description_sth->finish;
 
-    die('description not found') unless $description;
+    unless ($description) {
+        die(sprintf('description not found %s - %s - %s - %s', (
+            $vh->{'pmid'},
+            $vh->{'psimi_id'},
+            $protein1->{'accession'},
+            $protein2->{'accession'},
+        )));
+    }
 
-    push(@entries, {'mapping' => $mapping1, 'source_id' => $protein1->{'id'}, 'target_id' => $protein2->{'id'}}) if (@{$mapping1} > 0);
-    push(@entries, {'mapping' => $mapping2, 'source_id' => $protein2->{'id'}, 'target_id' => $protein1->{'id'}}) if (@{$mapping2} > 0);
+    my @entries = (
+        {'source' => $protein1, 'target' => $protein2, 'mapping' => $mapping1},
+        {'source' => $protein2, 'target' => $protein1, 'mapping' => $mapping2},
+    );
 
     foreach my $entry (@entries) {
-        $select_edge_sth->execute($entry->{'source_id'}, $entry->{'target_id'});
-        my $edge = $select_edge_sth->fetchrow_hashref;
-        $select_edge_sth->finish;
-
-        die(sprintf('edge not found %s - %s', $entry->{'source_id'}, $entry->{'target_id'})) unless $edge;
-
         foreach my $mapping (@{$entry->{'mapping'}}) {
             foreach my $isoform (@{$mapping->{'isoforms'}}) {
-                $select_sequence_sth->execute($entry->{'source_id'}, $isoform->{'accession'});
+                $select_edge_sth->execute($entry->{'source'}->{'id'}, $entry->{'target'}->{'id'});
+                my $edge = $select_edge_sth->fetchrow_hashref;
+                $select_edge_sth->finish;
+
+                unless ($edge) {
+                    die(sprintf('edge not found %s - %s', (
+                        $entry->{'source'}->{'accession'},
+                        $entry->{'target'}->{'accession'},
+                    )));
+                }
+
+                $select_sequence_sth->execute($entry->{'source'}->{'id'}, $isoform->{'accession'});
                 my $sequence = $select_sequence_sth->fetchrow_hashref;
                 $select_sequence_sth->finish;
 
-                die(sprintf('sequence not found %s - %s', $entry->{'source_id'}, $isoform->{'accession'})) unless $sequence;
+                unless ($sequence) {
+                    die(sprintf('sequence not found %s - %s', (
+                        $entry->{'source'}->{'accession'},
+                        $isoform->{'accession'},
+                    )));
+                }
 
                 foreach my $occurrence (@{$isoform->{'occurrences'}}) {
                     push(@alignments, [
                         $edge->{'id'},
                         $sequence->{'id'},
-                        $description_id,
+                        $description->{'id'},
                         $occurrence->{'start'},
                         $occurrence->{'stop'},
                         $occurrence->{'identity'},

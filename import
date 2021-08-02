@@ -2,10 +2,12 @@
 carton exec ./bin/proteins
 carton exec ./bin/proteins_xrefs
 carton exec ./bin/sequences
-carton exec ./bin/interactions
+carton exec ./bin/interactions_hh data/HH_nextprot.csv
+carton exec ./bin/interactions_vh
 carton exec ./bin/edges
 carton exec ./bin/methods
 carton exec ./bin/publications
-carton exec ./bin/descriptions
-carton exec ./bin/mappings
+carton exec ./bin/descriptions_hh data/HH_nextprot.csv
+carton exec ./bin/descriptions_vh
+carton exec ./bin/mappings_vh
 carton exec ./bin/taxonomy

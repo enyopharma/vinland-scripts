@@ -72,28 +72,23 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
 
     die(sprintf('protein not found %s - %s', $description->{'accession2'}, $description->{'name2'})) unless $protein2;
 
-    my @sorted = sort {
-        return +1 if ($a->{'type'} eq 'v');
-        return -1 if ($b->{'type'} eq 'v');
-        return $a->{'accession'} cmp $b->{'accession'};
-    } ($protein1, $protein2);
-
-    $select_interaction_sth->execute($sorted[0]->{'id'}, $sorted[1]->{'id'});
+    $select_interaction_sth->execute($protein1->{'id'}, $protein2->{'id'});
     my $interaction = $select_interaction_sth->fetchrow_hashref;
     $select_interaction_sth->finish;
 
-    die(sprintf('interaction not found %s - %s', $sorted[0]->{'id'}, $sorted[1]->{'id'})) unless $interaction;
+    die(sprintf('interaction not found %s - %s', $protein1->{'id'}, $protein2->{'id'})) unless $interaction;
 
     push(@descriptions, [
-        $description->{'pmid'},
+        $publication->{'pmid'},
         $method->{'id'},
         $interaction->{'id'},
+        '{ENYO}',
     ]);
 }
 
 $select_descriptions_sth->finish;
 
-$vinland->do('COPY descriptions (pmid, method_id, interaction_id) FROM STDIN');
+$vinland->do('COPY descriptions (pmid, method_id, interaction_id, sources) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@descriptions);
 

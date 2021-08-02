@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.14 (Ubuntu 10.14-0ubuntu0.18.04.1)
--- Dumped by pg_dump version 10.14 (Ubuntu 10.14-0ubuntu0.18.04.1)
+-- Dumped from database version 12.7 (Ubuntu 12.7-0ubuntu0.20.04.1)
+-- Dumped by pg_dump version 12.7 (Ubuntu 12.7-0ubuntu0.20.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -15,20 +15,6 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-
---
--- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
-
-
---
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
-
 
 --
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
@@ -44,21 +30,62 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
 
 
+--
+-- Name: atype; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.atype AS ENUM (
+    'GObp',
+    'GOcc',
+    'GOmf'
+);
+
+
+--
+-- Name: dsource; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.dsource AS ENUM (
+    'ENYO',
+    'IntAct',
+    'NextProt'
+);
+
+
+--
+-- Name: itype; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.itype AS ENUM (
+    'hh',
+    'vh'
+);
+
+
+--
+-- Name: ptype; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.ptype AS ENUM (
+    'h',
+    'v'
+);
+
+
 SET default_tablespace = '';
 
-SET default_with_oids = false;
+SET default_table_access_method = heap;
 
 --
 -- Name: annotations; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.annotations (
-    source character varying NOT NULL,
+    source public.atype NOT NULL,
     ref character varying(64) NOT NULL,
     name text NOT NULL,
     search text NOT NULL,
-    accessions character varying[] NOT NULL,
-    CONSTRAINT annotations_source_check CHECK (((source)::text = ANY (ARRAY[('GObp'::character varying)::text, ('GOcc'::character varying)::text, ('GOmf'::character varying)::text])))
+    accessions character varying[] NOT NULL
 );
 
 
@@ -70,7 +97,8 @@ CREATE TABLE public.descriptions (
     id integer NOT NULL,
     pmid integer NOT NULL,
     method_id integer NOT NULL,
-    interaction_id integer NOT NULL
+    interaction_id integer NOT NULL,
+    sources public.dsource[] NOT NULL
 );
 
 
@@ -132,12 +160,12 @@ ALTER SEQUENCE public.edges_id_seq OWNED BY public.edges.id;
 
 CREATE TABLE public.interactions (
     id integer NOT NULL,
-    type character(2) NOT NULL,
+    type public.itype NOT NULL,
     protein1_id integer NOT NULL,
     protein2_id integer NOT NULL,
+    sources public.dsource[] NOT NULL,
     nb_publications integer NOT NULL,
-    nb_methods integer NOT NULL,
-    CONSTRAINT interactions_type_check CHECK (((type)::text = ANY (ARRAY[('hh'::character varying)::text, ('vh'::character varying)::text])))
+    nb_methods integer NOT NULL
 );
 
 
@@ -234,13 +262,12 @@ ALTER SEQUENCE public.methods_id_seq OWNED BY public.methods.id;
 
 CREATE TABLE public.proteins (
     id integer NOT NULL,
-    type character(1) NOT NULL,
+    type public.ptype NOT NULL,
     ncbi_taxon_id integer NOT NULL,
     accession character varying(10) NOT NULL,
     name character varying NOT NULL,
     description text NOT NULL,
-    search text NOT NULL,
-    CONSTRAINT proteins_type_check CHECK (((type)::text = ANY (ARRAY[('h'::character varying)::text, ('v'::character varying)::text])))
+    search text NOT NULL
 );
 
 

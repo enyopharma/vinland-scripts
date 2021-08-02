@@ -1,0 +1,85 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use DBI;
+use List::Util qw(uniq);
+use Sort::Key::Natural qw(natsort);
+use Data::Dumper;
+
+my $vinland = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
+);
+
+my $select_protein_sth = $vinland->prepare('
+    SELECT * FROM proteins WHERE type = \'h\' AND accession = ?
+');
+
+my %interactions = ();
+
+while (my $line = <>) {
+    chomp $line;
+
+    my @parts = split("\t", $line);
+
+    my ($acc1) = $parts[0] =~ /^\s*NX_([-A-Z0-9]+)\s*$/;
+    my ($acc2) = $parts[1] =~ /^\s*NX_([-A-Z0-9]+)\s*$/;
+    my ($source) = $parts[2] =~ /^\s*([A-Za-z0-9]+)\s*$/;
+    my ($psimi_id) = $parts[4] =~ /^\s*(MI:[0-9]{4})\s*$/;
+    my ($pmid) = $parts[5] =~ /\s*([0-9]+)\s*/;
+
+    die('no source') unless $source;
+
+    next if $acc1 =~ /-[0-9]+$/;
+    next if $acc2 =~ /-[0-9]+$/;
+
+    $psimi_id = 'MI:0045' unless $psimi_id;
+    $pmid = '00000000' unless $pmid;
+
+    my ($accession1, $accession2) = sort { $a cmp $b } ($acc1, $acc2);
+
+    $select_protein_sth->execute($accession1);
+    my $protein1 = $select_protein_sth->fetchrow_hashref;
+    $select_protein_sth->finish;
+
+    die(sprintf('protein not found %s', $accession1)) unless $protein1;
+
+    $select_protein_sth->execute($accession2);
+    my $protein2 = $select_protein_sth->fetchrow_hashref;
+    $select_protein_sth->finish;
+
+    die(sprintf('protein not found %s', $accession2)) unless $protein2;
+
+    if ($interactions{$accession1}->{$accession2}) {
+        push(@{$interactions{$accession1}->{$accession2}->{'sources'}}, $source);
+        push(@{$interactions{$accession1}->{$accession2}->{'publications'}}, $pmid);
+        push(@{$interactions{$accession1}->{$accession2}->{'methods'}}, $psimi_id);
+    } else {
+        $interactions{$accession1}->{$accession2} = {
+            'type' => 'hh',
+            'protein1_id' => $protein1->{'id'},
+            'protein2_id' => $protein2->{'id'},
+            'sources' => [$source],
+            'publications' => [$pmid],
+            'methods' => [$psimi_id],
+        };
+    }
+}
+
+$vinland->do('COPY interactions (type, protein1_id, protein2_id, sources, nb_publications, nb_methods) FROM STDIN');
+
+foreach my $accession1 (natsort keys %interactions) {
+    foreach my $accession2 (natsort keys %{$interactions{$accession1}}) {
+        $vinland->pg_putcopydata(join("\t", (
+            $interactions{$accession1}->{$accession2}->{'type'},
+            $interactions{$accession1}->{$accession2}->{'protein1_id'},
+            $interactions{$accession1}->{$accession2}->{'protein2_id'},
+            '{' . join(',', natsort uniq @{$interactions{$accession1}->{$accession2}->{'sources'}}) . '}',
+            scalar(uniq @{$interactions{$accession1}->{$accession2}->{'publications'}}),
+            scalar(uniq @{$interactions{$accession1}->{$accession2}->{'methods'}}),
+        )) . "\n");
+    }
+}
+
+$vinland->pg_putcopyend();

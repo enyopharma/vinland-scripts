@@ -4,9 +4,7 @@ use warnings;
 use DBI;
 use Data::Dumper;
 
-my $ncbi_taxon_id = 10239;
-my $node_rank = 'species';
-my $name_class = 'scientific name';
+my $virus_id = 10239;
 
 my $drakkar = DBI->connect(
     sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
@@ -20,80 +18,92 @@ my $vinland = DBI->connect(
     $ENV{'DB_DEV_PASSWORD'},
 );
 
-my $select_boundaries_sth = $drakkar->prepare('
-    SELECT left_value, right_value FROM taxon WHERE ncbi_taxon_id = ?
+my $select_proteins_sth = $drakkar->prepare('
+    SELECT COUNT(DISTINCT(accession1, accession2, name2)) AS nb, left_value2 AS left_value, right_value2 AS right_value
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND left_value2 >= ?
+    AND right_value2 <= ?
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+    GROUP BY left_value2, right_value2
 ');
 
-my $select_species_sth = $drakkar->prepare('
-    SELECT DISTINCT ncbi_taxon_id AS ncbi_species_id, left_value, right_value
-    FROM taxon
-    WHERE node_rank = ?
-    AND left_value >= ?
-    AND right_value <= ?
+my $select_parents_sth = $drakkar->prepare('
+    SELECT ncbi_taxon_id FROM taxon WHERE left_value <= ? AND right_value >= ?
 ');
+
+my $select_taxon_sth = $drakkar->prepare(
+    'SELECT left_value, right_value FROM taxon WHERE ncbi_taxon_id = ?'
+);
 
 my $select_taxa_sth = $drakkar->prepare('
-    SELECT taxon_id, parent_taxon_id, ncbi_taxon_id, left_value, right_value
-    FROM taxon
+    SELECT t.taxon_id, t.parent_taxon_id, t.ncbi_taxon_id,
+        t.left_value, t.right_value,
+        t.node_rank,
+        COALESCE(tn.name, \'obsolete taxon\') AS name
+    FROM taxon AS t LEFT JOIN taxon_name AS tn ON t.taxon_id = tn.taxon_id AND tn.name_class = \'scientific name\'
     WHERE left_value >= ? AND right_value <= ?
+    ORDER BY t.left_value ASC
 ');
 
-my $select_taxon_name_sth = $drakkar->prepare('
-    SELECT name FROM taxon_name WHERE taxon_id = ? AND name_class = ?
-');
+$select_taxon_sth->execute($virus_id);
+my $virus = $select_taxon_sth->fetchrow_hashref;
+$select_taxon_sth->finish;
 
-my $select_ncbi_taxon_ids_sth = $drakkar->prepare('
-    SELECT ncbi_taxon_id FROM taxon WHERE left_value >= ? AND right_value <= ?
-');
+die('wrong virus id') unless $virus;
 
-my $select_nb_interactions_sth = $vinland->prepare('
-    SELECT COUNT(DISTINCT e.interaction_id)
-    FROM proteins AS p, edges AS e
-    WHERE p.id = e.source_id AND p.ncbi_taxon_id = ANY(?::int[])
-');
+# count number of ppi under each taxon.
+# - select only interacting taxon + nomber of ppi associated
+# - add the number of ppi to all the parent taxa
+my %map = ();
+
+$select_proteins_sth->execute($virus->{'left_value'}, $virus->{'right_value'});
+
+while (my $protein = $select_proteins_sth->fetchrow_hashref) {
+    $select_parents_sth->execute($protein->{'left_value'}, $protein->{'right_value'});
+
+    while (my $parent = $select_parents_sth->fetchrow_hashref) {
+        $map{$parent->{'ncbi_taxon_id'}}+= $protein->{'nb'};
+    }
+
+    $select_parents_sth->finish;
+}
+
+$select_proteins_sth->finish;
+
+# list taxon with parent species.
+# - taxa are sorted by left value ASC so each taxon is associated to the last seen species.
+my $species;
 
 my @entries = ();
 
-$select_boundaries_sth->execute($ncbi_taxon_id);
-my $virus = $select_boundaries_sth->fetchrow_hashref;
-$select_boundaries_sth->finish;
+$select_taxa_sth->execute($virus->{'left_value'}, $virus->{'right_value'});
 
-die('wrong virus taxon id') if (!$virus);
+while (my $taxon = $select_taxa_sth->fetchrow_hashref) {
+    if ($taxon->{'node_rank'} eq 'species') {
+        $species = $taxon;
+    }
 
-$select_species_sth->execute($node_rank, $virus->{'left_value'}, $virus->{'right_value'});
+    next unless $species;
 
-while (my $species = $select_species_sth->fetchrow_hashref) {
-    $select_taxa_sth->execute($species->{'left_value'}, $species->{'right_value'});
-
-    while (my $taxon = $select_taxa_sth->fetchrow_hashref) {
-        $select_ncbi_taxon_ids_sth->execute($taxon->{'left_value'}, $taxon->{'right_value'});
-        my $ncbi_taxon_ids = $select_ncbi_taxon_ids_sth->fetchall_arrayref({});
-        $select_ncbi_taxon_ids_sth->finish;
-
-        $select_nb_interactions_sth->execute('{' . join(',', map { $_->{'ncbi_taxon_id'} } @{$ncbi_taxon_ids}) . '}');
-        my($nb_interactions) = $select_nb_interactions_sth->fetchrow_array;
-        $select_nb_interactions_sth->finish;
-
-        $select_taxon_name_sth->execute($taxon->{'taxon_id'}, $name_class);
-        my $name = $select_taxon_name_sth->fetchrow_hashref;
-        $select_taxon_name_sth->finish;
-
+    if ($taxon->{'left_value'} >= $species->{'left_value'} && $taxon->{'right_value'} <= $species->{'right_value'}) {
         push(@entries, [
             $taxon->{'taxon_id'},
             $taxon->{'parent_taxon_id'},
             $taxon->{'ncbi_taxon_id'},
-            $species->{'ncbi_species_id'},
-            $name ? $name->{'name'} : 'obsolete taxon',
+            $species->{'ncbi_taxon_id'},
+            $taxon->{'name'},
             $taxon->{'left_value'},
             $taxon->{'right_value'},
-            $nb_interactions,
+            $map{$taxon->{'ncbi_taxon_id'}} // 0,
         ]);
     }
-
-    $select_taxa_sth->finish;
 }
 
-$select_species_sth->finish;
+$select_taxa_sth->finish;
 
 $vinland->do('COPY taxonomy (taxon_id, parent_taxon_id, ncbi_taxon_id, ncbi_species_id, name, left_value, right_value, nb_interactions) FROM STDIN');
 
