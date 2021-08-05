@@ -20,10 +20,10 @@ my $vinland = DBI->connect(
 
 my $select_human_proteins_sth = $drakkar->prepare('
     SELECT p.id, p.accession, p.name, p.sequences
-    FROM proteins AS p, proteins_versions AS pv
+    FROM proteins AS p, proteins_versions AS v
     WHERE p.type = \'h\'
-    AND p.accession = pv.accession
-    AND p.version = pv.version
+    AND p.accession = v.accession
+    AND p.version = v.version
     ORDER BY p.accession ASC
 ');
 
