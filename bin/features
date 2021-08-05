@@ -1,0 +1,148 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use DBI;
+use JSON qw(from_json);
+use Sort::Key::Natural qw(natsort);
+use Data::Dumper;
+
+# use metadata_fix table for 2021_02 version of uniprot
+# should be fixed in next updates
+
+my $drakkar = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
+    $ENV{'DB_PROD_USERNAME'},
+    $ENV{'DB_PROD_PASSWORD'},
+);
+
+my $vinland = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
+);
+
+my $select_human_proteins_sth = $drakkar->prepare('
+    SELECT p.accession, p.name
+    FROM proteins AS p, proteins_versions AS v
+    WHERE type = \'h\'
+    AND p.accession = v.accession
+    AND p.version = v.version
+    ORDER BY p.accession ASC
+');
+
+my $select_viral_proteins_sth = $drakkar->prepare('
+    SELECT DISTINCT accession2 AS accession, name2 AS name
+    FROM dataset
+    WHERE type = \'vh\'
+    AND state = \'curated\'
+    AND is_obsolete1 IS FALSE
+    AND is_obsolete2 IS FALSE
+    AND deleted_at IS NULL
+    ORDER BY accession2 ASC
+');
+
+my $select_metadata_sth = $vinland->prepare('
+    SELECT features FROM metadata_fix WHERE accession = ?
+');
+
+my $select_sequences_sth = $vinland->prepare('
+    SELECT s.id, s.accession, s.sequence, s.start, s.stop
+    FROM proteins AS p, sequences AS s
+    WHERE p.id = s.protein_id
+    AND p.accession = ?
+    AND p.name = ?
+');
+
+my @features = ();
+
+$select_human_proteins_sth->execute;
+
+while (my $protein = $select_human_proteins_sth->fetchrow_hashref) {
+    $select_metadata_sth->execute($protein->{'accession'});
+    my $metadata = $select_metadata_sth->fetchrow_hashref;
+    $select_metadata_sth->finish;
+
+    next unless $metadata;
+
+    my $features = from_json($metadata->{'features'});
+
+    next if @{$features} == 0;
+
+    $select_sequences_sth->execute($protein->{'accession'}, $protein->{'name'});
+    my $sequences = $select_sequences_sth->fetchall_hashref('accession');
+    $select_sequences_sth->finish;
+
+    die(sprintf('no sequence s% - %s', $protein->{'accession'}, $protein->{'name'})) if keys %{$sequences} == 0;
+
+    foreach my $feature (@{$features}) {
+        my $accession = $feature->{'accession'};
+        my $sequence = $sequences->{$accession};
+        my $length = $feature->{'stop'} - $feature->{'start'} + 1;
+        my $subseq = substr($sequence->{'sequence'}, $feature->{'start'} - 1, $length);
+
+        die() unless $subseq;
+
+        push(@features, [
+            $sequence->{'id'},
+            $feature->{'type'},
+            $feature->{'description'},
+            $subseq,
+            $feature->{'start'},
+            $feature->{'stop'},
+        ]);
+    }
+}
+
+$select_human_proteins_sth->finish;
+
+$select_viral_proteins_sth->execute;
+
+while (my $protein = $select_viral_proteins_sth->fetchrow_hashref) {
+    $select_metadata_sth->execute($protein->{'accession'});
+    my $metadata = $select_metadata_sth->fetchrow_hashref;
+    $select_metadata_sth->finish;
+
+    next unless $metadata;
+
+    my $features = from_json($metadata->{'features'});
+
+    next if @{$features} == 0;
+
+    $select_sequences_sth->execute($protein->{'accession'}, $protein->{'name'});
+    my $sequences = $select_sequences_sth->fetchall_hashref('accession');
+    $select_sequences_sth->finish;
+
+    die(sprintf('no sequence s% - %s', $protein->{'accession'}, $protein->{'name'})) if keys %{$sequences} == 0;
+
+    foreach my $feature (@{$features}) {
+        my $accession = $feature->{'accession'};
+        my $sequence = $sequences->{$accession};
+
+        next if $feature->{'start'} < $sequence->{'start'};
+        next if $feature->{'stop'} > $sequence->{'stop'};
+
+        my $start = $feature->{'start'} - $sequence->{'start'} + 1;
+        my $stop = $feature->{'stop'} - $sequence->{'start'} + 1;
+
+        my $subseq = substr($sequence->{'sequence'}, $start - 1, $stop - $start + 1);
+
+        die() unless $subseq;
+
+        push(@features, [
+            $sequence->{'id'},
+            $feature->{'type'},
+            $feature->{'description'},
+            $subseq,
+            $start,
+            $stop,
+        ]);
+    }
+}
+
+$select_viral_proteins_sth->finish;
+
+$vinland->do('COPY features (sequence_id, type, description, sequence, start, stop) FROM STDIN');
+
+$vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@features);
+
+$vinland->pg_putcopyend();

@@ -77,6 +77,41 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: features; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.features (
+    id integer NOT NULL,
+    sequence_id integer NOT NULL,
+    type character varying NOT NULL,
+    description text NOT NULL,
+    sequence text NOT NULL,
+    start integer NOT NULL,
+    stop integer NOT NULL
+);
+
+
+--
+-- Name: Features_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public."Features_id_seq"
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: Features_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public."Features_id_seq" OWNED BY public.features.id;
+
+
+--
 -- Name: annotations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -381,6 +416,13 @@ ALTER TABLE ONLY public.edges ALTER COLUMN id SET DEFAULT nextval('public.edges_
 
 
 --
+-- Name: features id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.features ALTER COLUMN id SET DEFAULT nextval('public."Features_id_seq"'::regclass);
+
+
+--
 -- Name: interactions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -413,6 +455,14 @@ ALTER TABLE ONLY public.proteins ALTER COLUMN id SET DEFAULT nextval('public.pro
 --
 
 ALTER TABLE ONLY public.sequences ALTER COLUMN id SET DEFAULT nextval('public.sequences_id_seq'::regclass);
+
+
+--
+-- Name: features Features_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.features
+    ADD CONSTRAINT "Features_pkey" PRIMARY KEY (id);
 
 
 --

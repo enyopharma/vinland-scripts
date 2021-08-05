@@ -2,6 +2,7 @@
 carton exec ./bin/proteins
 carton exec ./bin/proteins_xrefs
 carton exec ./bin/sequences
+carton exec ./bin/features
 carton exec ./bin/interactions_hh data/HH_nextprot.csv
 carton exec ./bin/interactions_vh
 carton exec ./bin/edges
