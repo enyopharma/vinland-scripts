@@ -8,15 +8,17 @@ use Data::Dumper;
 
 # use metadata_fix table for 2021_02 version of uniprot
 # should be fixed in next updates
+my $drakkar_db = shift @ARGV or die('no drakkar db');
+my $vinland_db = shift @ARGV or die('no vinland db');
 
 my $drakkar = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'drakkar', $ENV{'DB_PROD_HOSTNAME'}),
-    $ENV{'DB_PROD_USERNAME'},
-    $ENV{'DB_PROD_PASSWORD'},
+    sprintf('DBI:Pg:database=%s;host=%s', $drakkar_db, $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
 );
 
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    sprintf('DBI:Pg:database=%s;host=%s', $vinland_db, $ENV{'DB_DEV_HOSTNAME'}),
     $ENV{'DB_DEV_USERNAME'},
     $ENV{'DB_DEV_PASSWORD'},
 );
@@ -41,7 +43,7 @@ my $select_viral_proteins_sth = $drakkar->prepare('
     ORDER BY accession2 ASC
 ');
 
-my $select_metadata_sth = $vinland->prepare('
+my $select_metadata_sth = $drakkar->prepare('
     SELECT features FROM metadata_fix WHERE accession = ?
 ');
 

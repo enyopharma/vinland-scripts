@@ -1,14 +1,14 @@
 #!/bin/bash
-carton exec ./bin/proteins
-carton exec ./bin/proteins_xrefs
-carton exec ./bin/sequences
-carton exec ./bin/features
-carton exec ./bin/interactions_hh data/HH_nextprot.csv
-carton exec ./bin/interactions_vh
-carton exec ./bin/edges
-carton exec ./bin/methods
-carton exec ./bin/publications
-carton exec ./bin/descriptions_hh data/HH_nextprot.csv
-carton exec ./bin/descriptions_vh
-carton exec ./bin/mappings_vh
-carton exec ./bin/taxonomy
+carton exec ./bin/proteins drakkar_run66 vinland_run66
+carton exec ./bin/proteins_xrefs vinland_run66
+carton exec ./bin/sequences drakkar_run66 vinland_run66
+carton exec ./bin/features drakkar_run66 vinland_run66
+carton exec ./bin/interactions_hh vinland_run66 data/HH_nextprot.csv
+carton exec ./bin/interactions_vh drakkar_run66 vinland_run66
+carton exec ./bin/edges vinland_run66
+carton exec ./bin/methods drakkar_run66 vinland_run66
+carton exec ./bin/publications drakkar_run66 vinland_run66
+carton exec ./bin/descriptions_hh vinland_run66 data/HH_nextprot.csv
+carton exec ./bin/descriptions_vh drakkar_run66 vinland_run66
+carton exec ./bin/mappings_vh drakkar_run66 vinland_run66
+carton exec ./bin/taxonomy drakkar_run66 vinland_run66

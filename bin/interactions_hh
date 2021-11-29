@@ -6,8 +6,10 @@ use List::Util qw(uniq);
 use Sort::Key::Natural qw(natsort);
 use Data::Dumper;
 
+my $vinland_db = shift @ARGV or die('no vinland db');
+
 my $vinland = DBI->connect(
-    sprintf('DBI:Pg:database=%s;host=%s', 'vinland', $ENV{'DB_DEV_HOSTNAME'}),
+    sprintf('DBI:Pg:database=%s;host=%s', $vinland_db, $ENV{'DB_DEV_HOSTNAME'}),
     $ENV{'DB_DEV_USERNAME'},
     $ENV{'DB_DEV_PASSWORD'},
 );
