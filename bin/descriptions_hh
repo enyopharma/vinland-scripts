@@ -2,7 +2,6 @@
 use strict;
 use warnings;
 use DBI;
-use List::Util qw(uniq);
 use Sort::Key::Natural qw(natsort);
 use Data::Dumper;
 
@@ -31,13 +30,13 @@ my %descriptions = ();
 while (my $line = <>) {
     chomp $line;
 
-    my @parts = split("\t", $line);
+    my @parts = split(',', $line);
 
     my ($acc1) = $parts[0] =~ /^\s*NX_([-A-Z0-9]+)\s*$/;
     my ($acc2) = $parts[1] =~ /^\s*NX_([-A-Z0-9]+)\s*$/;
-    my ($source) = $parts[2] =~ /^\s*([A-Za-z0-9]+)\s*$/;
-    my ($psimi_id) = $parts[4] =~ /^\s*(MI:[0-9]{4})\s*$/;
-    my ($pmid) = $parts[5] =~ /\s*([0-9]+)\s*/;
+    my ($source) = $parts[3] =~ /^\s*([A-Za-z0-9]+)\s*$/;
+    my ($pmid) = $parts[4] =~ /\s*([0-9]+)\s*/;
+    my ($psimi_id) = $parts[5] =~ /^\s*(MI:[0-9]{4})\s*$/;
 
     die('no source') unless $source;
 
@@ -50,7 +49,7 @@ while (my $line = <>) {
     my ($accession1, $accession2) = sort { $a cmp $b } ($acc1, $acc2);
 
     if ($descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}) {
-        push(@{$descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'sources'}}, $source);
+        $descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'sources'}->{$source} = 1;
         next;
     }
 
@@ -80,7 +79,7 @@ while (my $line = <>) {
 
     $descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'method_id'} = $method->{'id'};
     $descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'interaction_id'} = $interaction->{'id'};
-    $descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'sources'} = [$source];
+    $descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'sources'}->{$source} = 1;
 }
 
 $vinland->do('COPY descriptions (pmid, method_id, interaction_id, sources) FROM STDIN');
@@ -93,7 +92,7 @@ foreach my $accession1 (natsort keys %descriptions) {
                     $pmid,
                     $descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'method_id'},
                     $descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'interaction_id'},
-                    '{' . join(',', natsort uniq @{$descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'sources'}}) . '}',
+                    '{' . join(',', natsort keys %{$descriptions{$accession1}->{$accession2}->{$pmid}->{$psimi_id}->{'sources'}}) . '}',
                 )) . "\n");
             }
         }

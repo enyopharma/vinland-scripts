@@ -2,7 +2,6 @@
 use strict;
 use warnings;
 use DBI;
-use List::Util qw(uniq);
 use Sort::Key::Natural qw(natsort);
 use Data::Dumper;
 
@@ -56,19 +55,21 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     my $accession1 = $protein1->{'accession'};
     my $accession2 = $protein2->{'accession'};
     my $name2 = $protein2->{'name'};
+    my $pmid = $description->{'pmid'};
+    my $psimi_id = $description->{'psimi_id'};
 
     if ($interactions{$accession1}->{$accession2}->{$name2}) {
-        push(@{$interactions{$accession1}->{$accession2}->{$name2}->{'publications'}}, $description->{'pmid'});
-        push(@{$interactions{$accession1}->{$accession2}->{$name2}->{'methods'}}, $description->{'psimi_id'});
-    } else {
-        $interactions{$accession1}->{$accession2}->{$name2} = {
-            'type' => 'vh',
-            'protein1_id' => $protein1->{'id'},
-            'protein2_id' => $protein2->{'id'},
-            'publications' => [$description->{'pmid'}],
-            'methods' => [$description->{'psimi_id'}],
-        };
+        $interactions{$accession1}->{$accession2}->{$name2}->{'publications'}->{$pmid} = 1;
+        $interactions{$accession1}->{$accession2}->{$name2}->{'methods'}->{$psimi_id} = 1;
+        next;
     }
+
+    $interactions{$accession1}->{$accession2}->{$name2} = {
+        'protein1_id' => $protein1->{'id'},
+        'protein2_id' => $protein2->{'id'},
+        'publications' => {$pmid => 1},
+        'methods' => {$psimi_id => 1},
+    };
 }
 
 $select_descriptions_sth->finish;
@@ -79,12 +80,12 @@ foreach my $accession1 (natsort keys %interactions) {
     foreach my $accession2 (natsort keys %{$interactions{$accession1}}) {
         foreach my $name2 (natsort keys %{$interactions{$accession1}->{$accession2}}) {
             $vinland->pg_putcopydata(join("\t", (
-                $interactions{$accession1}->{$accession2}->{$name2}->{'type'},
+                'vh',
                 $interactions{$accession1}->{$accession2}->{$name2}->{'protein1_id'},
                 $interactions{$accession1}->{$accession2}->{$name2}->{'protein2_id'},
                 '{ENYO}',
-                scalar(uniq @{$interactions{$accession1}->{$accession2}->{$name2}->{'publications'}}),
-                scalar(uniq @{$interactions{$accession1}->{$accession2}->{$name2}->{'methods'}}),
+                scalar keys %{$interactions{$accession1}->{$accession2}->{$name2}->{'publications'}},
+                scalar keys %{$interactions{$accession1}->{$accession2}->{$name2}->{'methods'}},
             )) . "\n");
         }
     }
