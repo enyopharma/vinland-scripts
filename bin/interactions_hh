@@ -20,7 +20,9 @@ my $select_protein_sth = $vinland->prepare('
 my %interactions = ();
 
 while (my $line = <>) {
-    chomp $line;
+    $line =~ s/[\n\r]+$//;
+
+    next if $line eq '';
 
     my @parts = split(',', $line);
 

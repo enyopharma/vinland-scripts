@@ -28,7 +28,9 @@ my $select_interaction_sth = $vinland->prepare('
 my %descriptions = ();
 
 while (my $line = <>) {
-    chomp $line;
+    $line =~ s/[\n\r]+$//;
+
+    next if $line eq '';
 
     my @parts = split(',', $line);
 
