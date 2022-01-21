@@ -52,7 +52,7 @@ while (my $line = <>) {
     my ($pmid) = $parts[5] =~ /\s*([0-9]+)\s*/;
     my ($psimi_id) = $parts[6] =~ /^\s*(MI:[0-9]{4})\s*$/;
 
-    # remove -1 from canonical
+    # select source and target
     $select_protein_sth->execute($accession1);
     my $target = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
