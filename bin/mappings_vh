@@ -125,7 +125,6 @@ while (my $vh = $select_descriptions_sth->fetchrow_hashref) {
                         $description->{'id'},
                         $occurrence->{'start'},
                         $occurrence->{'stop'},
-                        $occurrence->{'identity'},
                         $mapping->{'sequence'},
                     ]);
                 }
@@ -136,7 +135,7 @@ while (my $vh = $select_descriptions_sth->fetchrow_hashref) {
 
 $select_descriptions_sth->finish;
 
-$vinland->do('COPY mappings (edge_id, sequence_id, description_id, start, stop, identity, sequence) FROM STDIN');
+$vinland->do('COPY mappings (edge_id, sequence_id, description_id, start, stop, sequence) FROM STDIN');
 
 $vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@alignments);
 

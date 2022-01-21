@@ -34,21 +34,15 @@ while (my $line = <>) {
 
     my @parts = split(',', $line);
 
-    my ($acc1) = $parts[0] =~ /^\s*NX_([A-Z0-9]+)\s*$/;
-    my ($acc2) = $parts[1] =~ /^\s*NX_([A-Z0-9]+)\s*$/;
+    my ($acc1) = $parts[0] =~ /^\s*NX_([A-Z0-9]+)(-[0-9]+)?\s*$/;
+    my ($acc2) = $parts[1] =~ /^\s*NX_([A-Z0-9]+)(-[0-9]+)?\s*$/;
     my ($source) = $parts[3] =~ /^\s*([A-Za-z0-9]+)\s*$/;
     my ($pmid) = $parts[4] =~ /\s*([0-9]+)\s*/;
     my ($psimi_id) = $parts[5] =~ /^\s*(MI:[0-9]{4})\s*$/;
 
-    next unless $acc1;
-    next unless $acc2;
-
-    next if ($source =~ /intact/i && !$pmid);
-    next if ($source =~ /intact/i && !$psimi_id);
+    next unless $pmid;
 
     $psimi_id = 'MI:0045' unless $psimi_id;
-
-    die('no pmid') unless $pmid;
 
     my ($accession1, $accession2) = sort { $a cmp $b } ($acc1, $acc2);
 

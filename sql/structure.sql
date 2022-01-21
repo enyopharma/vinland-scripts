@@ -235,7 +235,6 @@ CREATE TABLE public.mappings (
     description_id integer NOT NULL,
     start integer NOT NULL,
     stop integer NOT NULL,
-    identity numeric NOT NULL,
     sequence text NOT NULL
 );
 

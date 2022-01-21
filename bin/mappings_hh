@@ -1,0 +1,122 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use DBI;
+use Data::Dumper;
+
+my $vinland_db = shift @ARGV or die('no vinland db');
+
+my $vinland = DBI->connect(
+    sprintf('DBI:Pg:database=%s;host=%s', $vinland_db, $ENV{'DB_DEV_HOSTNAME'}),
+    $ENV{'DB_DEV_USERNAME'},
+    $ENV{'DB_DEV_PASSWORD'},
+);
+
+my $select_protein_sth = $vinland->prepare('
+    SELECT * FROM proteins WHERE accession = ?
+');
+
+my $select_edge_sth = $vinland->prepare('
+    SELECT * FROM edges WHERE source_id = ? AND target_id = ?
+');
+
+my $select_sequence_sth = $vinland->prepare('
+    SELECT * FROM sequences WHERE protein_id = ? AND accession = ?
+');
+
+my $select_description_sth = $vinland->prepare('
+    SELECT d.id
+    FROM methods AS m, interactions AS i, descriptions AS d
+    WHERE m.id = d.method_id AND i.id = d.interaction_id
+      AND d.pmid = ?
+      AND m.psimi_id = ?
+      AND i.protein1_id = ?
+      AND i.protein2_id = ?
+');
+
+my @alignments = ();
+
+while (my $line = <>) {
+    $line =~ s/[\n\r]+$//;
+
+    next if $line eq '';
+
+    my @parts = split(',', $line);
+
+    my ($accession1) = $parts[0] =~ /^\s*NX_([-A-Z0-9]+)\s*$/;
+    my ($accession2) = $parts[1] =~ /^\s*NX_([-A-Z0-9]+)-[0-9]+\s*$/;
+    my ($isoform) = $parts[1] =~ /^\s*NX_([-A-Z0-9]+-[0-9]+)\s*$/;
+    my ($start) = $parts[2] =~ /^\s*([0-9]+)\s*$/;
+    my ($stop) = $parts[3] =~ /^\s*([0-9]+)\s*$/;
+    my ($mapping) = $parts[4] =~ /^\s*([A-Z]+)\s*$/;
+    my ($pmid) = $parts[5] =~ /\s*([0-9]+)\s*/;
+    my ($psimi_id) = $parts[6] =~ /^\s*(MI:[0-9]{4})\s*$/;
+
+    # remove -1 from canonical
+    $select_protein_sth->execute($accession1);
+    my $target = $select_protein_sth->fetchrow_hashref;
+    $select_protein_sth->finish;
+
+    die(sprintf('protein not found %s', $accession1)) unless $target;
+
+    $select_protein_sth->execute($accession2);
+    my $source = $select_protein_sth->fetchrow_hashref;
+    $select_protein_sth->finish;
+
+    die(sprintf('protein not found %s', $accession2)) unless $source;
+
+    # select description
+    my ($protein1, $protein2) = sort { $a->{'accession'} cmp $b->{'accession'} } ($source, $target);
+
+    $select_description_sth->execute($pmid, $psimi_id, $protein1->{'id'}, $protein2->{'id'});
+    my $description = $select_description_sth->fetchrow_hashref;
+    $select_description_sth->finish;
+
+    unless ($description) {
+        die(sprintf('description not found %s - %s - %s - %s', (
+            $pmid,
+            $psimi_id,
+            $protein1->{'accession'},
+            $protein2->{'accession'},
+        )));
+    }
+
+    # select edge
+    $select_edge_sth->execute($source->{'id'}, $target->{'id'});
+    my $edge = $select_edge_sth->fetchrow_hashref;
+    $select_edge_sth->finish;
+
+    unless ($edge) {
+        die(sprintf('edge not found %s - %s', $source->{'accession'}, $target->{'accession'}));
+    }
+
+    # select sequence (no isoform means canonical form)
+    $select_sequence_sth->execute($source->{'id'}, $isoform);
+    my $sequence = $select_sequence_sth->fetchrow_hashref;
+    $select_sequence_sth->finish;
+
+    unless ($sequence) {
+        $select_sequence_sth->execute($source->{'id'}, $accession2);
+        $sequence = $select_sequence_sth->fetchrow_hashref;
+        $select_sequence_sth->finish;
+    }
+
+    unless ($sequence) {
+        die(sprintf('sequence not found %s - %s', $source->{'accession'}, $isoform));
+    }
+
+    push(@alignments, [
+        $edge->{'id'},
+        $sequence->{'id'},
+        $description->{'id'},
+        $start,
+        $stop,
+        $mapping,
+    ]);
+}
+
+$vinland->do('COPY mappings (edge_id, sequence_id, description_id, start, stop, sequence) FROM STDIN');
+
+$vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@alignments);
+
+$vinland->pg_putcopyend();
