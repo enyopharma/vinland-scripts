@@ -4,6 +4,8 @@ use warnings;
 use DBI;
 use Data::Dumper;
 
+my %binaries = binaries();
+
 my $drakkar_db = shift @ARGV or die('no drakkar db');
 my $vinland_db = shift @ARGV or die('no vinland db');
 
@@ -23,12 +25,106 @@ my $select_methods_sth = $drakkar->prepare('
     SELECT psimi_id, name FROM methods ORDER BY id ASC
 ');
 
+my @methods = ();
+
 $select_methods_sth->execute;
 
-my $methods = $select_methods_sth->fetchall_arrayref;
+while (my ($psimi_id, $name) = $select_methods_sth->fetchrow_array) {
+    push(@methods, [$psimi_id, $name, $binaries{$psimi_id} ? 't' : 'f']);
+}
 
-$vinland->do('COPY methods (psimi_id, name) FROM STDIN');
+$select_methods_sth->finish;
 
-$vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@{$methods});
+$vinland->do('COPY methods (psimi_id, name, is_binary) FROM STDIN');
+
+$vinland->pg_putcopydata(join("\t", @{$_}) . "\n") foreach (@methods);
 
 $vinland->pg_putcopyend();
+
+sub binaries {
+    return (
+        'MI:0008' => 1,
+        'MI:0009' => 1,
+        'MI:0010' => 1,
+        'MI:0011' => 1,
+        'MI:0012' => 1,
+        'MI:0014' => 1,
+        'MI:0018' => 1,
+        'MI:0030' => 1,
+        'MI:0031' => 1,
+        'MI:0034' => 1,
+        'MI:0040' => 1,
+        'MI:0047' => 1,
+        'MI:0048' => 1,
+        'MI:0052' => 1,
+        'MI:0053' => 1,
+        'MI:0055' => 1,
+        'MI:0065' => 1,
+        'MI:0066' => 1,
+        'MI:0073' => 1,
+        'MI:0077' => 1,
+        'MI:0081' => 1,
+        'MI:0084' => 1,
+        'MI:0089' => 1,
+        'MI:0090' => 1,
+        'MI:0092' => 1,
+        'MI:0095' => 1,
+        'MI:0098' => 1,
+        'MI:0099' => 1,
+        'MI:0107' => 1,
+        'MI:0108' => 1,
+        'MI:0111' => 1,
+        'MI:0112' => 1,
+        'MI:0114' => 1,
+        'MI:0115' => 1,
+        'MI:0231' => 1,
+        'MI:0232' => 1,
+        'MI:0369' => 1,
+        'MI:0370' => 1,
+        'MI:0397' => 1,
+        'MI:0398' => 1,
+        'MI:0399' => 1,
+        'MI:0411' => 1,
+        'MI:0417' => 1,
+        'MI:0425' => 1,
+        'MI:0430' => 1,
+        'MI:0438' => 1,
+        'MI:0440' => 1,
+        'MI:0602' => 1,
+        'MI:0605' => 1,
+        'MI:0655' => 1,
+        'MI:0678' => 1,
+        'MI:0726' => 1,
+        'MI:0727' => 1,
+        'MI:0728' => 1,
+        'MI:0729' => 1,
+        'MI:0809' => 1,
+        'MI:0813' => 1,
+        'MI:0814' => 1,
+        'MI:0888' => 1,
+        'MI:0895' => 1,
+        'MI:0899' => 1,
+        'MI:0900' => 1,
+        'MI:0901' => 1,
+        'MI:0905' => 1,
+        'MI:0916' => 1,
+        'MI:0921' => 1,
+        'MI:1016' => 1,
+        'MI:1030' => 1,
+        'MI:1037' => 1,
+        'MI:1087' => 1,
+        'MI:1111' => 1,
+        'MI:1112' => 1,
+        'MI:1113' => 1,
+        'MI:1183' => 1,
+        'MI:1191' => 1,
+        'MI:1203' => 1,
+        'MI:1204' => 1,
+        'MI:1235' => 1,
+        'MI:1320' => 1,
+        'MI:1356' => 1,
+        'MI:2171' => 1,
+        'MI:2215' => 1,
+        'MI:2277' => 1,
+    );
+}

@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 12.7 (Ubuntu 12.7-0ubuntu0.20.04.1)
--- Dumped by pg_dump version 12.7 (Ubuntu 12.7-0ubuntu0.20.04.1)
+-- Dumped from database version 12.9 (Ubuntu 12.9-0ubuntu0.20.04.1)
+-- Dumped by pg_dump version 12.9 (Ubuntu 12.9-0ubuntu0.20.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -266,7 +266,8 @@ ALTER SEQUENCE public.mappings_id_seq OWNED BY public.mappings.id;
 CREATE TABLE public.methods (
     id integer NOT NULL,
     psimi_id character varying(7) NOT NULL,
-    name character varying NOT NULL
+    name character varying NOT NULL,
+    is_binary boolean DEFAULT false NOT NULL
 );
 
 
