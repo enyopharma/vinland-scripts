@@ -31,6 +31,10 @@ my $select_descriptions_sth = $drakkar->prepare('
     ORDER BY accession1 ASC, accession2 ASC
 ');
 
+my $select_method_sth = $vinland->prepare('
+    SELECT * FROM methods WHERE psimi_id = ?
+');
+
 my $select_protein_sth = $vinland->prepare('
     SELECT * FROM proteins WHERE accession = ? AND name = ?
 ');
@@ -40,6 +44,12 @@ my %interactions = ();
 $select_descriptions_sth->execute;
 
 while (my $description = $select_descriptions_sth->fetchrow_hashref) {
+    $select_method_sth->execute($description->{'psimi_id'});
+    my $method = $select_method_sth->fetchrow_hashref;
+    $select_method_sth->finish;
+
+    die(sprintf('method not found %s', $description->{'psimi_id'})) unless $method;
+
     $select_protein_sth->execute($description->{'accession1'}, $description->{'name1'});
     my $protein1 = $select_protein_sth->fetchrow_hashref;
     $select_protein_sth->finish;
@@ -61,6 +71,7 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
     if ($interactions{$accession1}->{$accession2}->{$name2}) {
         $interactions{$accession1}->{$accession2}->{$name2}->{'publications'}->{$pmid} = 1;
         $interactions{$accession1}->{$accession2}->{$name2}->{'methods'}->{$psimi_id} = 1;
+        $interactions{$accession1}->{$accession2}->{$name2}->{'is_binary'} = 1 if ($method->{'is_binary'});
         next;
     }
 
@@ -69,23 +80,31 @@ while (my $description = $select_descriptions_sth->fetchrow_hashref) {
         'protein2_id' => $protein2->{'id'},
         'publications' => {$pmid => 1},
         'methods' => {$psimi_id => 1},
+        'is_binary' => $method->{'is_binary'},
     };
 }
 
 $select_descriptions_sth->finish;
 
-$vinland->do('COPY interactions (type, protein1_id, protein2_id, sources, nb_publications, nb_methods) FROM STDIN');
+$vinland->do('COPY interactions (type, protein1_id, protein2_id, sources, nb_publications, nb_methods, is_gold, is_binary) FROM STDIN');
 
 foreach my $accession1 (natsort keys %interactions) {
     foreach my $accession2 (natsort keys %{$interactions{$accession1}}) {
         foreach my $name2 (natsort keys %{$interactions{$accession1}->{$accession2}}) {
+            my $nb_publications = scalar keys %{$interactions{$accession1}->{$accession2}->{$name2}->{'publications'}};
+            my $nb_methods = scalar keys %{$interactions{$accession1}->{$accession2}->{$name2}->{'methods'}};
+            my $is_gold = ($nb_publications > 1 || $nb_methods > 1) ? 1 : 0;
+            my $is_binary = $interactions{$accession1}->{$accession2}->{$name2}->{'is_binary'};
+
             $vinland->pg_putcopydata(join("\t", (
                 'vh',
                 $interactions{$accession1}->{$accession2}->{$name2}->{'protein1_id'},
                 $interactions{$accession1}->{$accession2}->{$name2}->{'protein2_id'},
                 '{ENYO}',
-                scalar keys %{$interactions{$accession1}->{$accession2}->{$name2}->{'publications'}},
-                scalar keys %{$interactions{$accession1}->{$accession2}->{$name2}->{'methods'}},
+                $nb_publications,
+                $nb_methods,
+                $is_gold,
+                $is_binary,
             )) . "\n");
         }
     }

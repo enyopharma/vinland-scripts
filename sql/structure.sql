@@ -200,7 +200,9 @@ CREATE TABLE public.interactions (
     protein2_id integer NOT NULL,
     sources public.dsource[] NOT NULL,
     nb_publications integer NOT NULL,
-    nb_methods integer NOT NULL
+    nb_methods integer NOT NULL,
+    is_gold boolean NOT NULL,
+    is_binary boolean NOT NULL
 );
 
 
@@ -267,7 +269,7 @@ CREATE TABLE public.methods (
     id integer NOT NULL,
     psimi_id character varying(7) NOT NULL,
     name character varying NOT NULL,
-    is_binary boolean DEFAULT false NOT NULL
+    is_binary boolean NOT NULL
 );
 
 
