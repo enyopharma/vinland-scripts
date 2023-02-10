@@ -74,7 +74,7 @@ while (my $protein = $select_human_proteins_sth->fetchrow_hashref) {
     my $sequences = $select_sequences_sth->fetchall_hashref('accession');
     $select_sequences_sth->finish;
 
-    die(sprintf('no sequence s% - %s', $protein->{'accession'}, $protein->{'name'})) if keys %{$sequences} == 0;
+    die(sprintf('no sequence %s - %s', $protein->{'accession'}, $protein->{'name'})) if keys %{$sequences} == 0;
 
     foreach my $feature (@{$features}) {
         my $accession = $feature->{'accession'};
